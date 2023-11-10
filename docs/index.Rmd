@@ -1,0 +1,256 @@
+---
+title: "DA_hw06"
+author: "Lin,Pei Chen"
+date: "2023-04-03"
+output: html_document
+---
+Q1.
+(a)
+```{r}
+PCA <- function(x,isCorrMX=FALSE){
+  x<-as.matrix(x)
+  n<-nrow(x)
+  means<-colMeans(x[1:nrow(x),1:ncol(x)])
+  mean<-c()
+  for(i in 1:ncol(x)){
+    mean<-cbind(mean,rep(means[i],nrow(x)))
+  }
+  A<-as.matrix(x-mean)
+  cov<-t(A)%*%A/(n-1)
+  sigma<-c()
+  for(i in 1:ncol(x)){
+    sigma<-cbind(sigma,rep(sqrt(diag(cov)[i]),nrow(x)))
+  }
+  y<-A/sigma
+  corr<-(t(y)%*%y)/(n-1)
+  if(isCorrMX==FALSE){
+    eigen<-eigen(cov)
+  }
+  else{
+    eigen<-eigen(corr)
+  }
+  lambda<-eigen$values
+  P<-eigen$vectors
+  T<-x%*%P
+  total_variance<-data.frame(PCA=character(),variance=numeric(),contribution=numeric(),cumulative=numeric())
+  cum<-0
+  colnames<-c()
+  for(i in 1:ncol(x)){
+    pc<-lambda[i]/sum(lambda)
+    PCA_name <- paste("PC", i, sep = "")
+    cum<-cum+pc
+    total_variance[i,]<-c(PCA_name,lambda[i],pc,cum)
+    colnames<-cbind(colnames,PCA_name)
+  }
+  total_variance[, c("variance", "contribution", "cumulative")] <- sapply(total_variance[, c("variance", "contribution", "cumulative")], as.numeric)
+  colnames(P)<-c(colnames)
+  rownames(P)<-colnames(x)
+  n_labels<-length(colnames)
+  if(n_labels<=10){
+    limit_labels <-colnames
+  }else{
+    limit_labels<-colnames[1:10]
+  }
+  library(ggplot2)
+  plot<-ggplot(total_variance, aes(x = PCA)) +
+    geom_col(aes(y = variance/max(total_variance[["variance"]])), fill = "steelblue") + 
+    geom_line(aes(y = cumulative,group = 1), color = "indianred3",size=0.6)+
+    geom_point(aes(y=cumulative,group = 1),size=3,shape=21,fill="indianred3") +
+    scale_y_continuous(
+      breaks = seq(0, 1, 0.1),
+      labels = paste0(seq(0, 100, 10), "%"),
+      name = "Cumulative Percentage",
+      sec.axis = sec_axis(~.*max(total_variance[["variance"]]) , name = "Variance")
+    ) +
+    labs(x = "Principal Component") +
+    scale_x_discrete(limits=limit_labels)+
+    theme_bw()
+  return(list(loadingMatrix=P,eigenvalue=lambda,score_matrix=T,scree_plot=plot,total_variance=total_variance))
+}
+FA<-function(x,nfactors){
+  x<-as.matrix(x)
+  results<-PCA(x,isCorrMX = TRUE)
+  n<-nrow(x)
+  means<-colMeans(x[1:nrow(x),1:ncol(x)])
+  mean<-c()
+  for(i in 1:ncol(x)){
+    mean<-cbind(mean,rep(means[i],nrow(x)))
+  }
+  A<-as.matrix(x-mean)
+  cov<-t(A)%*%A/(n-1)
+  sigma<-c()
+  for(i in 1:ncol(x)){
+    sigma<-cbind(sigma,rep(sqrt(diag(cov)[i]),nrow(x)))
+  }
+  y<-A/sigma
+  corr<-(t(y)%*%y)/(n-1)
+  eigenvector<-c()
+  eigenvalue<-c()
+  for(i in 1:nfactors){
+    eigenvector<-cbind(eigenvector,results$loadingMatrix[,i])
+    eigenvalue<-rbind(eigenvalue,results$eigenvalue[i])
+  }
+  sqrt_eigenvalue<-diag(0,nfactors)
+  for(i in 1:nfactors){
+    sqrt_eigenvalue[i,i]<-sqrt(eigenvalue)[i]
+  }
+  A_t<-eigenvector%*%sqrt_eigenvalue
+  psi<-diag(0,nrow(corr))
+  z<-A_t%*%t(A_t)
+  corr_z<-corr-z
+  for(i in 1:nrow(corr)){
+    psi[i,i]<-corr_z[i,i]
+  }
+  total_variance<-ncol(x)
+  communality<-c()
+  for(i in 1:nrow(corr)){
+    communality<-rbind(communality,corr[i,i]-psi[i,i])
+  }
+  F<- x%*%solve(psi)%*%A_t%*%solve(t(A_t)%*%solve(psi)%*%A_t)
+  proportion<-data.frame(contribution=numeric())
+  for(i in 1:nfactors){
+    pc<-eigenvalue[i]/total_variance
+    proportion[i,]<-c(pc)
+  }
+  return(list(loadingMatrix=A_t,factorMatrix=F,communality=communality,psi=psi,proportion=proportion))
+}
+```
+
+b.
+```{r}
+setwd("C:/Users/simpl/OneDrive/桌面/111_下學期/資料分析方法/HW03")
+data <- read.table("auto-mpg.data.txt",header = FALSE,sep = "")
+str(data)
+colnames(data) <- c("mpg","cylinders","displacement","horsepower","weight","acceleration","model_year","origin","car name")
+
+data_withoutcarname<-subset(data,select=c(1:(ncol(data)-1)))
+data_withoutcarname$horsepower<- as.numeric(data_withoutcarname$horsepower)
+
+x<-na.omit(data_withoutcarname)
+FA(x,2)
+y<-FA(x,2)
+library(ggrepel)
+mydata<-data.frame(x=y$loadingMatrix[,1],
+                   y=y$loadingMatrix[,2],
+                   label=c("mpg","cylinders","displacement","horsepower","weight","acceleration","model_year","origin"))
+ggplot(mydata, aes(x = x, y = y,label=label)) + 
+  geom_point()+
+  geom_label_repel()
+
+pca<-PCA(x,TRUE)
+pca$loadingMatrix
+```
+
+The above plot shows that the mpg data may have two latent groups. One group contains the variables "horsepower","displacement","cylinders","weight". The another group contains the variable "origin","acceleration","model_year". As we seen the meaning of the variables, we can make this conclusion that The first group is associate with the engine and the other group is associate with the 
+information of individual car model. 
+
+We can see the results of PCA, the PC1 generate the similar results with FA. But the meaning of two analysis is different. One is maximum the variance of variables and the other is find the latent variables in a data set.
+
+Q2.
+
+a.
+```{r}
+library(png)
+library(dplyr)
+library(scales)
+library(reshape2)
+path <- "C:/Users/simpl/OneDrive/桌面/111_下學期/資料分析方法/HW02/ORL Faces/ORL Faces"
+
+data <- data.frame(matrix(nrow = 0, ncol = 2576),row.names = character())
+
+for (i in 1:40) {
+  for(j in 1:10){
+    file <- file.path(path, paste0( i,"_",j,".png"))
+    img <- readPNG(file)
+    vec <- as.vector(img)
+    data <- rbind(data, vec)
+  }
+}
+names(data) <- paste0("Pixel", 1:2576)
+results<-FA(data,100)
+factor_count<-data.frame(tv=c("50%","60%","70%","80%","90%"),
+                            count=0)
+j<-1
+z<-0.5
+cum<-0
+for(i in 1:100){
+  cum<-cum+results$proportion[i,]
+  if(cum>=z){
+    factor_count[j,2]<-i
+    j<- j+1
+    z<-z+0.1
+  }
+  if(j==6){
+    break
+  }
+}
+factor_count
+```
+
+b.
+```{r}
+results<-FA(data,35)
+firstF<-results$loadingMatrix[,1]
+f1_rescaled<-rescale(firstF, to=c(0,255))
+f1_matrix<-matrix(f1_rescaled,nrow = 56,ncol=46)
+df<-melt(f1_matrix)
+ggplot(df, aes(Var1, Var2)) +
+  geom_raster(aes(fill=value))+
+  scale_fill_gradient(low = "white", high = "black") +
+  theme_void()
+```
+
+Q3.
+
+a.
+```{r}
+library(pls)
+set.seed(999)
+setwd("C:/Users/simpl/OneDrive/桌面/111_下學期/資料分析方法/HW03")
+data <- read.table("auto-mpg.data.txt",header = FALSE,sep = "")
+str(data)
+colnames(data) <- c("mpg","cylinders","displacement","horsepower","weight","acceleration","model_year","origin","car name")
+
+data_withoutcarname<-subset(data,select=c(1:(ncol(data)-1)))
+data_withoutcarname$horsepower<- as.numeric(data_withoutcarname$horsepower)
+
+x<-na.omit(data_withoutcarname)
+
+select_cars<-sample(nrow(x),300)
+training_data<-x[select_cars,]
+test_data<-x[-select_cars,]
+
+X_train_matrix<-as.matrix(training_data[2:7])
+Y_train_matrix<-as.matrix(training_data[1])
+
+X_test_matrix<-as.matrix(test_data[2:7])
+Y_test_matrix<-as.matrix(test_data[1])
+model<-plsr(Y_train_matrix~X_train_matrix,scale=TRUE)
+plot(RMSEP(model),main="mpg")
+```
+
+The above plot shows that the more components the lower RMSE so we use the six components to model and predict the testing data.
+
+```{r}
+RMSEP(model)
+test_predictions<-as.matrix(data.frame(predict(model,ncomp=6,X_test_matrix)))
+mean_r2 <- mean(diag(cor(test_predictions, Y_test_matrix))**2)
+print(mean_r2)
+```
+The R square is 0.8061. This model shows great explanatory power.
+
+b.
+```{r}
+X_train_matrix<-as.matrix(training_data[2:6])
+Y_train_matrix<-as.matrix(training_data[c(1,7)])
+
+X_test_matrix<-as.matrix(test_data[2:6])
+Y_test_matrix<-as.matrix(test_data[c(1,7)])
+model2<-plsr(Y_train_matrix~X_train_matrix,scale=TRUE)
+plot(RMSEP(model2))
+RMSEP(model2)
+test_predictions <- as.matrix(data.frame(predict(model2, ncomp=5, X_test_matrix)))
+mean_r2 <- mean(diag(cor(test_predictions, Y_test_matrix))**2)
+print(mean_r2)
+```
+In this model, we use the two predictor variable, but this model has a lower R square compared to the one predictor model. I think this is because the additional predictor variable does not contain much relevant information for the response variable.
