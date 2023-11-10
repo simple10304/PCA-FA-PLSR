@@ -1,4 +1,4 @@
 # PCA-FA-PLSR
 
-## Implement PCA amd FA without any package and implemention.
-## Perform PLSR on the AutoMPG dataset
+Implement PCA and FA without any package and implementation.
+Perform PLSR on the AutoMPG dataset
